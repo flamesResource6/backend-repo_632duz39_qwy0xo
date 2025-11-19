@@ -1,8 +1,13 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional, Any, Dict
 
-app = FastAPI()
+from database import create_document, get_documents
+from schemas import Author, Book, Submission, User, Product
+
+app = FastAPI(title="Digital Giants API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -14,7 +19,7 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello from FastAPI Backend!"}
+    return {"name": "Digital Giants API", "message": "Welcome to Digital Giants backend"}
 
 @app.get("/api/hello")
 def hello():
@@ -33,7 +38,6 @@ def test_database():
     }
     
     try:
-        # Try to import database module
         from database import db
         
         if db is not None:
@@ -42,10 +46,9 @@ def test_database():
             response["database_name"] = db.name if hasattr(db, 'name') else "✅ Connected"
             response["connection_status"] = "Connected"
             
-            # Try to list collections to verify connectivity
             try:
                 collections = db.list_collection_names()
-                response["collections"] = collections[:10]  # Show first 10 collections
+                response["collections"] = collections[:10]
                 response["database"] = "✅ Connected & Working"
             except Exception as e:
                 response["database"] = f"⚠️  Connected but Error: {str(e)[:50]}"
@@ -57,12 +60,46 @@ def test_database():
     except Exception as e:
         response["database"] = f"❌ Error: {str(e)[:50]}"
     
-    # Check environment variables
     import os
     response["database_url"] = "✅ Set" if os.getenv("DATABASE_URL") else "❌ Not Set"
     response["database_name"] = "✅ Set" if os.getenv("DATABASE_NAME") else "❌ Not Set"
     
     return response
+
+# ---------- Digital Giants API ----------
+
+@app.get("/api/books", response_model=List[Book])
+def list_books(limit: int = 50):
+    try:
+        docs = get_documents("book", {}, limit)
+        # Convert ObjectId to string and map to Book model-compatible dict
+        normalized = []
+        for d in docs:
+            d.pop("_id", None)
+            normalized.append(Book(**d))
+        return normalized
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/submissions")
+def create_submission(payload: Submission):
+    try:
+        doc_id = create_document("submission", payload)
+        return {"id": doc_id, "message": "Submission received"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/authors", response_model=List[Author])
+def list_authors(limit: int = 50):
+    try:
+        docs = get_documents("author", {}, limit)
+        normalized = []
+        for d in docs:
+            d.pop("_id", None)
+            normalized.append(Author(**d))
+        return normalized
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
